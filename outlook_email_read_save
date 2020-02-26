@@ -1,0 +1,64 @@
+import sys
+import os
+import win32com.client as win32
+import traceback
+#from datetime import datetime
+import re
+from pathlib import Path
+
+
+MBEP_SAVE_PATH='''\\\\mnao.net\\home\\KREDDI\\Desktop\\Kiran_Working\\MBEP\\Jan2020'''
+RECON_MONTH='Jan_2020'
+
+def processOutlook():
+    print('Am in processOutlook')
+    outlook = win32.Dispatch("Outlook.Application").GetNamespace("MAPI")
+    accounts = win32.Dispatch("Outlook.Application").Session.Accounts
+    for account in accounts:
+        print(account.DisplayName)
+        mbepfolder=outlook.Folders(account.DeliveryStore.DisplayName).Folders('_Mazda').Folders('_MBEP').Folders('2020')
+        folders=mbepfolder.Folders
+        
+        for folder in folders:
+            print(folder.name)
+            print(RECON_MONTH)
+            if bool(folder.name == RECON_MONTH):
+                saveEmails(folder)
+
+def saveEmails(folder):
+    messages=folder.Items
+    cwd = os.getcwd()
+    print('cwd: ' + cwd)
+    
+    try:
+        if os.path.isdir(MBEP_SAVE_PATH):
+            print('File path found: ' + str(Path(MBEP_SAVE_PATH)))
+            os.chdir(str(Path(MBEP_SAVE_PATH)))
+            print('cwd: ' + os.getcwd())
+            for message in messages:
+                name = re.sub('[^A-Za-z0-9]+', ' ', message.subject)
+                name='{}\{}'.format(str(Path(MBEP_SAVE_PATH)), name)
+                #datetime.now().strftime("%m%d%Y%H%M%S%f")
+                print('Saving Message As: ' + name)
+                message.SaveAs(name + '.msg')
+        else:
+            print('File Path not found: ' + str(Path(MBEP_SAVE_PATH)))
+    except Exception as e:
+        print('Error while saving emails')
+        raise Exception ('Error saving emails ' + str(e))
+    
+    finally:
+        os.chdir(cwd)
+        print(os.getcwd())
+    
+if __name__ == "__main__":
+    try:
+        processOutlook()
+    except Exception as e:
+        print('Error encountered')
+        print(str(e))
+        print(str(traceback.print_exc()))
+        sys.exit(1)
+    finally:
+        print('Process Completed')
+        exit
