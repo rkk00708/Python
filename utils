@@ -1,0 +1,185 @@
+
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Jan 17 09:32:35 2020
+
+@author: kreddi
+"""
+
+import jaydebeapi as jdbc
+import sys
+import pandas as pd
+import os
+
+import jpype
+
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
+
+
+jars=['C:\\Working\\SQuirrelClient\\lib\\db2jcc4.jar','C:\\Working\\SQuirrelClient\\lib\\db2jcc_license_cisuz.jar']
+def send_email(toaddr=None, subject=None, mesg=None, attachment_location=None):
+
+    email_sender = 'xyz@xyz.com'
+
+    msg = MIMEMultipart()
+    msg['From'] = email_sender
+    msg['To'] = toaddr
+    msg['Subject'] = subject
+
+    msg.attach(MIMEText(mesg, 'plain'))
+
+    if attachment_location != '':
+        filename = os.path.basename(attachment_location)
+        attachment = open(attachment_location, "rb")
+        part = MIMEBase('application', 'octet-stream')
+        part.set_payload(attachment.read())
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition',
+                        "attachment; filename= %s" % filename)
+        msg.attach(part)
+
+    try:
+        server = smtplib.SMTP('smtp server', port)
+        server.ehlo()
+        server.starttls()
+        server.login('xyz@xyz.com', 'password')
+        text = msg.as_string()
+        server.sendmail(email_sender, toaddr, text)
+        print('email sent')
+        server.quit()
+    except:
+        print("SMPT server connection error")
+    return True
+
+def pp(cursor, data=None, rowlens=0):
+    d = cursor.description
+    if not d:
+        return "#### NO RESULTS ###"
+    names = []
+    lengths = []
+    rules = []
+    if not data:
+        data = cursor.fetchall(  )
+    for dd in d:    # iterate over description
+        l = dd[2]
+        if not l:
+            l = 12             # or default arg ...
+        l = max(l, len(dd[0])) # Handle long names
+        names.append(dd[0])
+        lengths.append(l)       
+    for col in range(len(lengths)):
+        if rowlens:
+            rls = [len(row[col]) for row in data if row[col]]
+            lengths[col] = max([lengths[col]]+rls)
+        rules.append("-"*lengths[col])
+    format = " ".join(["%-{}s".format(l) for l in lengths])
+    print(format)
+    result = [format % tuple(names)]
+    print(result)
+    result.append(format % tuple(rules))
+    print(result)
+    for row in data:
+        result.append(format % row)
+    return "\n".join(result)
+
+def getConn(web=None):
+    #Enter the values for you database connection
+    dsn_database = ""            # e.g. "BLUDB" Name of the database
+    dsn_hostname = "" # e.g.: "bluemix05.bluforcloud.com"
+    dsn_port = ""                # e.g. "50000" Database port number
+    dsn_uid = ""        # e.g. "dash104434" User id
+    dsn_pwd = ""       # e.g. "7dBZ3jWt9xN6$o0JiX!m" User password for the database
+    
+    CLASS_PATH='C:\\Working\\SQuirrelClient\\lib\\db2jcc4.jar;C:\\Working\\SQuirrelClient\\lib\\db2jcc_license_cisuz.jar'
+    conn=None
+    try:
+        connection_string='jdbc:db2://'+dsn_hostname+':'+dsn_port+'/'+dsn_database
+        if (sys.version_info >= (3,0)):
+            print('Connecting here - No Jars provided - 1')
+            #conn = jdbc.connect("com.ibm.db2.jcc.DB2Driver", connection_string, [dsn_uid, dsn_pwd], jars=jars, libs='C:\\Working\\SQuirrelClient\\lib')
+            if web:
+                if jpype.isJVMStarted() and not jpype.isThreadAttachedToJVM():
+                    print('Thread not attached - Attching thread to JVM')
+                    jpype.attachThreadToJVM()
+                    jpype.java.lang.Thread.currentThread().setContextClassLoader(jpype.java.lang.ClassLoader.getSystemClassLoader())
+                else:
+                    print('JVM not started !!!!')
+                    jpype.startJVM(jpype.getDefaultJVMPath(), "-Djava.class.path=%s" % CLASS_PATH)
+
+            conn = jdbc.connect("com.ibm.db2.jcc.DB2Driver", connection_string, [dsn_uid, dsn_pwd])
+            #conn = jdbc.connect("com.ibm.db2.jcc.DB2Driver", connection_string, [dsn_uid, dsn_pwd], jars=jars, libs='C:\\Working\\SQuirrelClient\\lib')
+
+        else:
+            print('Connecting here - No Jars provided -2 ')
+            #conn = jdbc.connect("com.ibm.db2.jcc.DB2Driver", [connection_string, dsn_uid, dsn_pwd], jars=jars, libs='C:\\Working\\SQuirrelClient\\lib')   
+            conn = jdbc.connect("com.ibm.db2.jcc.DB2Driver", [connection_string, dsn_uid, dsn_pwd])   
+    except Exception as e:
+        print(str(e))
+    return conn
+
+def formatOutput(query, curs):
+    print('am in format output')
+    printData=[]
+    printData.append('=' * 50)
+    printData.append(os.linesep)
+    printData.append(query)
+    printData.append(os.linesep)
+    printData.append('=' * 50)
+    printData.append(os.linesep)
+    printData.append(pp(curs))
+    printData.append(os.linesep)
+    printData.append('=' * 50)
+    printData.append(os.linesep)
+    printData.append(os.linesep)
+    printData.append(os.linesep)
+    printData.append(os.linesep)
+    return printData
+
+def executeQuery(query=None, exportToXls=False, prettyFormat=False, outFile=None, web=None):
+    print('Am in executeQuery')
+    conn=None
+    curs=None
+    dataResult=None
+    try:
+        query=query.replace('\n',' ')
+        print(query)
+        conn=getConn(web=web)
+        if conn:
+            if exportToXls:
+                print('Exporting to excel')
+                df=pd.read_sql(query,conn)
+                file_name=outFile.split('\\')[-1]
+                df.to_excel(outFile,sheet_name=file_name[0:file_name.index('.xlsx')], index = None, header=True)
+                print(f"CSV File {outFile} has been created")
+            elif prettyFormat:
+                print('Pretty foramt selected')
+                curs=conn.cursor()
+                curs.execute(query)
+                dataResult=formatOutput(query, curs)
+            else:
+                curs=conn.cursor()
+                curs.execute(query)
+                dataResult = curs.fetchall()
+        else:
+            print(f"Connection not set")
+        #print(dataResult)
+        
+    except Exception as e:
+        print(str(e))
+    finally:
+        if conn:
+            conn.close()
+        if curs:
+            curs.close()
+        print('Exiting')
+        #if jpype.isJVMStarted():
+        #    jpype.shutdownJVM()
+    return dataResult
+
+if __name__ == '__main__':
+    query='''select current_date from sysibm.sysdummy1;'''
+    print(executeQuery(query=query, web=False))
